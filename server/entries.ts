@@ -5,7 +5,7 @@ import { query } from './db.js';
 export async function getAllEntries(_req: Request, res: Response) {
   try {
     const result = await query(
-      'SELECT id, date, text, mood, prompt, timestamp, edited FROM journal_entries ORDER BY timestamp DESC'
+      'SELECT id, date, text, mood, prompt, timestamp, edited, emotion FROM journal_entries ORDER BY timestamp DESC'
     );
     res.json(result.rows.map(rowToEntry));
   } catch (err) {
@@ -18,7 +18,7 @@ export async function getAllEntries(_req: Request, res: Response) {
 export async function getEntryById(req: Request, res: Response) {
   try {
     const result = await query(
-      'SELECT id, date, text, mood, prompt, timestamp, edited FROM journal_entries WHERE id = $1',
+      'SELECT id, date, text, mood, prompt, timestamp, edited, emotion FROM journal_entries WHERE id = $1',
       [req.params.id]
     );
     if (result.rows.length === 0) {
@@ -35,21 +35,22 @@ export async function getEntryById(req: Request, res: Response) {
 // POST /api/entries
 export async function saveEntry(req: Request, res: Response) {
   try {
-    const { id, date, text, mood, prompt, timestamp, edited } = req.body;
+    const { id, date, text, mood, prompt, timestamp, edited, emotion } = req.body;
     if (!id || !date || !text || timestamp == null) {
       res.status(400).json({ error: 'Missing required fields: id, date, text, timestamp' });
       return;
     }
     await query(
-      `INSERT INTO journal_entries (id, date, text, mood, prompt, timestamp, edited)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO journal_entries (id, date, text, mood, prompt, timestamp, edited, emotion)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (id) DO UPDATE SET
          text = EXCLUDED.text,
          mood = EXCLUDED.mood,
          prompt = EXCLUDED.prompt,
          timestamp = EXCLUDED.timestamp,
-         edited = EXCLUDED.edited`,
-      [id, date, text, mood || '', prompt || null, timestamp, edited || false]
+         edited = EXCLUDED.edited,
+         emotion = EXCLUDED.emotion`,
+      [id, date, text, mood || '', prompt || null, timestamp, edited || false, emotion ?? null]
     );
     res.json({ ok: true });
   } catch (err) {
@@ -124,7 +125,7 @@ export async function getStreak(_req: Request, res: Response) {
 export async function exportData(_req: Request, res: Response) {
   try {
     const entriesResult = await query(
-      'SELECT id, date, text, mood, prompt, timestamp, edited FROM journal_entries ORDER BY timestamp DESC'
+      'SELECT id, date, text, mood, prompt, timestamp, edited, emotion FROM journal_entries ORDER BY timestamp DESC'
     );
     const profileResult = await query(
       'SELECT about_me, current_season, preferences, avoidances FROM user_profile WHERE id = $1',
@@ -156,12 +157,12 @@ export async function importData(req: Request, res: Response) {
     if (entries && Array.isArray(entries)) {
       for (const e of entries) {
         await query(
-          `INSERT INTO journal_entries (id, date, text, mood, prompt, timestamp, edited)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+          `INSERT INTO journal_entries (id, date, text, mood, prompt, timestamp, edited, emotion)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            ON CONFLICT (id) DO UPDATE SET
              text = EXCLUDED.text, mood = EXCLUDED.mood, prompt = EXCLUDED.prompt,
-             timestamp = EXCLUDED.timestamp, edited = EXCLUDED.edited`,
-          [e.id, e.date, e.text, e.mood || '', e.prompt || null, e.timestamp, e.edited || false]
+             timestamp = EXCLUDED.timestamp, edited = EXCLUDED.edited, emotion = EXCLUDED.emotion`,
+          [e.id, e.date, e.text, e.mood || '', e.prompt || null, e.timestamp, e.edited || false, e.emotion ?? null]
         );
       }
     }
@@ -187,6 +188,7 @@ function rowToEntry(row: any) {
     prompt: row.prompt || undefined,
     timestamp: Number(row.timestamp),
     edited: row.edited || undefined,
+    emotion: row.emotion ?? undefined,
   };
 }
 

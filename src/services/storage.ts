@@ -6,6 +6,7 @@ export interface JournalEntry {
   prompt?: string;
   timestamp: number;
   edited?: boolean;
+  emotion?: number;  // 0-6: Very Unpleasant → Very Pleasant
 }
 
 export interface UserProfile {

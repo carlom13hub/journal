@@ -31,6 +31,7 @@ export async function initDB(): Promise<void> {
   `);
   await query(`CREATE INDEX IF NOT EXISTS idx_entries_date ON journal_entries(date)`);
   await query(`CREATE INDEX IF NOT EXISTS idx_entries_timestamp ON journal_entries(timestamp DESC)`);
+  await query(`ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS emotion INTEGER`);
 
   await query(`
     CREATE TABLE IF NOT EXISTS user_profile (

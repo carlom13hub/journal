@@ -6,6 +6,17 @@ import {
 } from './services/storage';
 import { sendMessage } from './services/api';
 
+// ── Emotion levels (slider: 0=Very Unpleasant → 6=Very Pleasant) ──
+const EMOTION_LEVELS = [
+  { label: 'Very Unpleasant',    points: 8, amp: 28, color: '#7C3AED', bgStart: '#D8C8F0', bgEnd: '#C4B0E0' },
+  { label: 'Unpleasant',         points: 8, amp: 22, color: '#4F46E5', bgStart: '#CCD4F0', bgEnd: '#B4BEE0' },
+  { label: 'Slightly Unpleasant', points: 7, amp: 16, color: '#3B82F6', bgStart: '#D4DFF4', bgEnd: '#BCC8E0' },
+  { label: 'Neutral',            points: 0, amp: 0,  color: '#5BC0CE', bgStart: '#E4F0F4', bgEnd: '#D4E4EC' },
+  { label: 'Slightly Pleasant',  points: 5, amp: 16, color: '#22C55E', bgStart: '#D4F0D8', bgEnd: '#B8E0C0' },
+  { label: 'Pleasant',           points: 5, amp: 24, color: '#B8960C', bgStart: '#F0EAC8', bgEnd: '#E4DCA8' },
+  { label: 'Very Pleasant',      points: 5, amp: 30, color: '#EA580C', bgStart: '#F0DCC8', bgEnd: '#E4C8A8' },
+];
+
 // ── Moods with labels ──
 const MOODS: Array<{ emoji: string; label: string }> = [
   { emoji: '😊', label: 'Happy' },
@@ -26,6 +37,7 @@ const app = document.getElementById('app')!;
 let currentTab: 'journal' | 'entries' | 'profile' = 'journal';
 let selectedMoods: Set<string> = new Set();
 let aiPrompt = '';
+let currentEmotion = 3; // default to Neutral
 
 async function init() {
   await renderApp();
@@ -79,6 +91,66 @@ async function renderApp() {
   else if (currentTab === 'profile') await renderProfile(page);
 }
 
+// ── Emotion shape SVG generation ──
+function polarPath(cx: number, cy: number, r: number, points: number, amp: number, phase: number): string {
+  if (points === 0 || amp === 0) {
+    return `M${cx + r},${cy} A${r},${r} 0 1,0 ${cx - r},${cy} A${r},${r} 0 1,0 ${cx + r},${cy}`;
+  }
+  const steps = 200;
+  let d = '';
+  for (let i = 0; i <= steps; i++) {
+    const theta = (i / steps) * Math.PI * 2;
+    const radius = r + amp * Math.cos(points * theta + phase);
+    const x = cx + radius * Math.cos(theta);
+    const y = cy + radius * Math.sin(theta);
+    d += (i === 0 ? 'M' : 'L') + `${x.toFixed(1)},${y.toFixed(1)}`;
+  }
+  return d + 'Z';
+}
+
+function generateEmotionSVG(level: number): string {
+  const e = EMOTION_LEVELS[level];
+  const size = 260;
+  const cx = size / 2;
+  const cy = size / 2;
+  const layers = [
+    { r: 95, opacity: 0.10, phase: 0 },
+    { r: 80, opacity: 0.18, phase: 0.35 },
+    { r: 65, opacity: 0.30, phase: 0.7 },
+    { r: 48, opacity: 0.50, phase: 1.05 },
+  ];
+  let svg = `<svg class="emotion-svg" viewBox="0 0 ${size} ${size}">`;
+  for (const l of layers) {
+    const ampScale = l.r / 95;
+    const path = polarPath(cx, cy, l.r, e.points, e.amp * ampScale, l.phase);
+    svg += `<path d="${path}" fill="${e.color}" fill-opacity="${l.opacity}" />`;
+  }
+  svg += `<circle cx="${cx}" cy="${cy}" r="3" fill="${e.color}" fill-opacity="0.85" />`;
+  svg += '</svg>';
+  return svg;
+}
+
+function emotionCardHTML(level: number): string {
+  const e = EMOTION_LEVELS[level];
+  return `
+    <div class="emotion-card" id="emotion-card" style="background: linear-gradient(180deg, ${e.bgStart} 0%, ${e.bgEnd} 100%)">
+      <div class="emotion-shape-bg">
+        ${generateEmotionSVG(level)}
+      </div>
+      <div class="emotion-content">
+        <div class="emotion-label-text">${e.label}</div>
+        <div class="emotion-slider-wrap">
+          <input type="range" id="emotion-slider" class="emotion-slider" min="0" max="6" step="1" value="${level}" />
+          <div class="emotion-slider-labels">
+            <span>VERY UNPLEASANT</span>
+            <span>VERY PLEASANT</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 // ════════════════════════════════════════════
 // ── JOURNAL TAB ──
 // ════════════════════════════════════════════
@@ -100,6 +172,10 @@ async function renderJournal(page: HTMLElement) {
           </button>
         `).join('')}
       </div>
+    </div>
+
+    <div id="emotion-area">
+      ${emotionCardHTML(currentEmotion)}
     </div>
 
     <div id="ai-prompt-area">
@@ -131,6 +207,20 @@ async function renderJournal(page: HTMLElement) {
     });
   });
 
+  // Emotion slider — update card visuals without replacing the slider element
+  const emotionSlider = page.querySelector('#emotion-slider') as HTMLInputElement;
+  emotionSlider?.addEventListener('input', () => {
+    currentEmotion = parseInt(emotionSlider.value, 10);
+    const card = page.querySelector('#emotion-card') as HTMLElement;
+    if (!card) return;
+    const e = EMOTION_LEVELS[currentEmotion];
+    card.style.background = `linear-gradient(180deg, ${e.bgStart} 0%, ${e.bgEnd} 100%)`;
+    const shapeBg = card.querySelector('.emotion-shape-bg') as HTMLElement;
+    if (shapeBg) shapeBg.innerHTML = generateEmotionSVG(currentEmotion);
+    const label = card.querySelector('.emotion-label-text') as HTMLElement;
+    if (label) label.textContent = e.label;
+  });
+
   // Save
   page.querySelector('#save-btn')?.addEventListener('click', async () => {
     const text = (page.querySelector('#entry-text') as HTMLTextAreaElement).value.trim();
@@ -144,9 +234,11 @@ async function renderJournal(page: HTMLElement) {
       mood: [...selectedMoods].join(' '),
       prompt: aiPrompt || undefined,
       timestamp: now,
+      emotion: currentEmotion,
     });
     aiPrompt = '';
     selectedMoods.clear();
+    currentEmotion = 3;
     toast('Saved');
     await renderApp();
   });
@@ -230,6 +322,7 @@ async function renderEntries(page: HTMLElement) {
           <div class="entry-card-left">
             <span class="entry-card-date">${formatDate(e.date)}${e.timestamp ? ' · ' + formatTime(e.timestamp) : ''}</span>
             ${e.edited ? '<span class="edited-badge" title="This entry was updated">edited</span>' : ''}
+            ${e.emotion != null ? `<span class="emotion-badge" style="background: ${EMOTION_LEVELS[e.emotion].color}20; color: ${EMOTION_LEVELS[e.emotion].color};">${EMOTION_LEVELS[e.emotion].label}</span>` : ''}
           </div>
           <div class="entry-card-right">
             <span class="entry-card-mood">${e.mood || ''}</span>
@@ -256,6 +349,7 @@ async function renderEntries(page: HTMLElement) {
 
   function openEditModal(entry: JournalEntry) {
     const entryMoods = new Set(entry.mood ? entry.mood.split(' ').filter(Boolean) : []);
+    let editEmotion = entry.emotion ?? 3;
 
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
@@ -274,6 +368,13 @@ async function renderEntries(page: HTMLElement) {
           </div>
         </div>
         <div class="modal-field">
+          <label>Emotion</label>
+          <div class="edit-emotion-row">
+            <span class="edit-emotion-label" id="edit-emotion-label" style="color: ${EMOTION_LEVELS[editEmotion].color}">${EMOTION_LEVELS[editEmotion].label}</span>
+            <input type="range" id="edit-emotion-slider" class="emotion-slider emotion-slider-modal" min="0" max="6" step="1" value="${editEmotion}" />
+          </div>
+        </div>
+        <div class="modal-field">
           <label>Entry</label>
           <textarea id="edit-text" style="min-height:140px;">${esc(entry.text)}</textarea>
         </div>
@@ -287,6 +388,17 @@ async function renderEntries(page: HTMLElement) {
 
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
     overlay.querySelector('#edit-cancel')?.addEventListener('click', () => overlay.remove());
+
+    // Emotion slider in modal
+    const editSlider = overlay.querySelector('#edit-emotion-slider') as HTMLInputElement;
+    editSlider?.addEventListener('input', () => {
+      editEmotion = parseInt(editSlider.value, 10);
+      const lbl = overlay.querySelector('#edit-emotion-label') as HTMLElement;
+      if (lbl) {
+        lbl.textContent = EMOTION_LEVELS[editEmotion].label;
+        lbl.style.color = EMOTION_LEVELS[editEmotion].color;
+      }
+    });
 
     // Multi-mood toggle in modal
     overlay.querySelectorAll('.mood-btn').forEach((btn) => {
@@ -310,6 +422,7 @@ async function renderEntries(page: HTMLElement) {
         text: newText,
         mood: [...entryMoods].join(' '),
         edited: true,
+        emotion: editEmotion,
       });
       overlay.remove();
       toast('Entry updated');
