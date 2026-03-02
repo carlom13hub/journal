@@ -1,5 +1,5 @@
 import {
-  saveEntry, getAllEntries, getStreak,
+  saveEntry, getAllEntries, deleteEntry, getStreak,
   getSettings, saveSettings, getProfile, saveProfile,
   exportData, importData,
   type JournalEntry, type UserProfile,
@@ -379,6 +379,7 @@ async function renderEntries(page: HTMLElement) {
           <textarea id="edit-text" style="min-height:140px;">${esc(entry.text)}</textarea>
         </div>
         <div class="modal-actions">
+          <button class="btn-modal-danger" id="edit-delete">Delete Entry</button>
           <button class="btn-modal-secondary" id="edit-cancel">Cancel</button>
           <button class="btn-modal-primary" id="edit-save">Save Changes</button>
         </div>
@@ -426,6 +427,15 @@ async function renderEntries(page: HTMLElement) {
       });
       overlay.remove();
       toast('Entry updated');
+      allEntries = await getAllEntries();
+      renderList();
+    });
+
+    overlay.querySelector('#edit-delete')?.addEventListener('click', async () => {
+      if (!confirm('Are you sure you want to delete this entry? This cannot be undone.')) return;
+      await deleteEntry(entry.id);
+      overlay.remove();
+      toast('Entry deleted');
       allEntries = await getAllEntries();
       renderList();
     });
