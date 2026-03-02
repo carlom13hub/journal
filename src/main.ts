@@ -83,8 +83,8 @@ async function renderApp() {
 // ── JOURNAL TAB ──
 // ════════════════════════════════════════════
 async function renderJournal(page: HTMLElement) {
-  const dateStr = new Date().toLocaleDateString('en-US', {
-    weekday: 'long', month: 'long', day: 'numeric',
+  const dateStr = new Date().toLocaleDateString('en-AU', {
+    weekday: 'long', day: 'numeric', month: 'long',
   });
 
   page.innerHTML = `
@@ -466,8 +466,10 @@ async function openSettings() {
 
   overlay.querySelector('#modal-clear')?.addEventListener('click', async () => {
     if (confirm('Delete all entries, profile, and settings? This cannot be undone.')) {
-      const dbs = await indexedDB.databases();
-      for (const db of dbs) { if (db.name) indexedDB.deleteDatabase(db.name); }
+      try {
+        await fetch('/api/entries', { method: 'DELETE' });
+      } catch {}
+      localStorage.removeItem('gratitude-app-settings');
       toast('Data cleared');
       overlay.remove();
       selectedMoods.clear();
@@ -490,14 +492,18 @@ function toast(message: string) {
 function toDateStr(d: Date): string { return d.toISOString().split('T')[0]; }
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', {
-    weekday: 'short', month: 'short', day: 'numeric',
-  });
+  const d = new Date(dateStr + 'T00:00:00');
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = String(d.getFullYear()).slice(-2);
+  const weekday = d.toLocaleDateString('en-AU', { weekday: 'short' });
+  return `${weekday} ${day}/${month}/${year}`;
 }
 
 function formatTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleTimeString('en-US', {
+  return new Date(timestamp).toLocaleTimeString('en-AU', {
     hour: 'numeric', minute: '2-digit',
+    hour12: true,
   });
 }
 
